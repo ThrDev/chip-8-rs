@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 # beep = "0.3.0"
-console_engine = "1.5.1"
+glerminal = "0.3.0"
 rand = "0.8.3"
 
 [target.arm-unknown-linux-gnueabi]

@@ -1,47 +1,47 @@
-use console_engine::KeyCode;
+use glerminal::VirtualKeyCode;
 
 pub struct KeyMap {
-    k_0: KeyCode,
-    k_1: KeyCode,
-    k_2: KeyCode,
-    k_3: KeyCode,
-    k_4: KeyCode,
-    k_5: KeyCode,
-    k_6: KeyCode,
-    k_7: KeyCode,
-    k_8: KeyCode,
-    k_9: KeyCode,
-    k_a: KeyCode,
-    k_b: KeyCode,
-    k_c: KeyCode,
-    k_d: KeyCode,
-    k_e: KeyCode,
-    k_f: KeyCode,
+    k_0: VirtualKeyCode,
+    k_1: VirtualKeyCode,
+    k_2: VirtualKeyCode,
+    k_3: VirtualKeyCode,
+    k_4: VirtualKeyCode,
+    k_5: VirtualKeyCode,
+    k_6: VirtualKeyCode,
+    k_7: VirtualKeyCode,
+    k_8: VirtualKeyCode,
+    k_9: VirtualKeyCode,
+    k_a: VirtualKeyCode,
+    k_b: VirtualKeyCode,
+    k_c: VirtualKeyCode,
+    k_d: VirtualKeyCode,
+    k_e: VirtualKeyCode,
+    k_f: VirtualKeyCode,
 }
 
 impl KeyMap {
     pub fn new() -> Self {
         KeyMap {
-            k_0: KeyCode::Char('1'),
-            k_1: KeyCode::Char('2'),
-            k_2: KeyCode::Char('3'),
-            k_3: KeyCode::Char('q'),
-            k_4: KeyCode::Char('w'),
-            k_5: KeyCode::Char('e'),
-            k_6: KeyCode::Char('a'),
-            k_7: KeyCode::Char('s'),
-            k_8: KeyCode::Char('d'),
-            k_9: KeyCode::Char('z'),
-            k_a: KeyCode::Char('x'),
-            k_b: KeyCode::Char('c'),
-            k_c: KeyCode::Char('4'),
-            k_d: KeyCode::Char('r'),
-            k_e: KeyCode::Char('f'),
-            k_f: KeyCode::Char('v'),
+            k_0: VirtualKeyCode::X,
+            k_1: VirtualKeyCode::Key1,
+            k_2: VirtualKeyCode::Key2,
+            k_3: VirtualKeyCode::Key3,
+            k_4: VirtualKeyCode::Q,
+            k_5: VirtualKeyCode::W,
+            k_6: VirtualKeyCode::E,
+            k_7: VirtualKeyCode::A,
+            k_8: VirtualKeyCode::S,
+            k_9: VirtualKeyCode::D,
+            k_a: VirtualKeyCode::Z,
+            k_b: VirtualKeyCode::C,
+            k_c: VirtualKeyCode::Key4,
+            k_d: VirtualKeyCode::R,
+            k_e: VirtualKeyCode::F,
+            k_f: VirtualKeyCode::V,
         }
     }
 
-    pub fn match_to_key(&self, key: u8) -> KeyCode {
+    pub fn match_to_key(&self, key: u8) -> VirtualKeyCode {
         match key {
             0x0 => self.k_0,
             0x1 => self.k_1,
@@ -59,11 +59,11 @@ impl KeyMap {
             0xD => self.k_d,
             0xE => self.k_e,
             0xF => self.k_f,
-            _ => KeyCode::Null
+            _ => VirtualKeyCode::Unlabeled
         }
     }
 
-    pub fn match_to_u8(&self, key: KeyCode) -> u8 {
+    pub fn match_to_u8(&self, key: VirtualKeyCode) -> u8 {
         match key {
             x if self.k_0 == key => 0x0,
             x if self.k_1 == key => 0x1,
@@ -85,7 +85,7 @@ impl KeyMap {
         }
     }
 
-    pub fn get_all_keys(&self) -> Vec<KeyCode> {
+    pub fn get_all_keys(&self) -> Vec<VirtualKeyCode> {
         return vec!(self.k_0,
                     self.k_1,
                     self.k_2,

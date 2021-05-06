@@ -5,17 +5,15 @@ use std::sync::mpsc::{TryRecvError, Sender, Receiver};
 use crate::instruction::Instruction;
 use std::thread::JoinHandle;
 use crate::stack::{Stack};
-use console_engine::{Color, ConsoleEngine, KeyCode};
 use crate::opcode::OpCode;
 use crate::register::Register;
 use rand::Rng;
 use crate::display::Display;
-use console_engine::pixel;
 use crate::keymap::KeyMap;
 use std::process::exit;
+use glerminal::VirtualKeyCode;
 
 pub struct Vm {
-    pub console: ConsoleEngine,
     pub delay_timer: Arc<Mutex<Timer>>,
     pub sound_timer: Arc<Mutex<Timer>>,
     pub stack: Arc<Mutex<Stack>>,
@@ -31,13 +29,12 @@ pub struct Timer {
 }
 
 impl Vm {
-    pub fn new(engine: ConsoleEngine) -> Self {
+    pub fn new() -> Self {
         let (delaytx, delayrx): (Sender<i32>, Receiver<i32>) = mpsc::channel();
         let (soundtx, soundrx): (Sender<i32>, Receiver<i32>) = mpsc::channel();
         let mut vm = Vm{
             display: Display::new(),
             keymap: KeyMap::new(),
-            console: engine,
             delay_timer: Arc::new(Mutex::new(Timer {
                 timing: 0,
                 tx: delaytx,
@@ -160,53 +157,52 @@ impl Vm {
     }
 
     pub fn execute(&mut self) {
-        let clone = Arc::clone(&self.stack);
-        let mut stack = clone.lock().unwrap();
         let mut elapsed = 0;
         let mut debugging = false;
-        while let mut instruction = &stack.get_next_instruction() {
+        let clone = Arc::clone(&self.stack);
+        let mut stack = clone.lock().unwrap();
+        while self.display.refresh() {
+            let mut instruction = &stack.get_next_instruction();
             match instruction {
                 Some(_) => {
-                    //println!("elapsed {:?}", elapsed);
-                    self.console.wait_frame(); // wait for next frame + capture inputs
-                    if self.console.is_key_pressed(KeyCode::Char('p')) {
+                    if self.display.is_key_pressed(VirtualKeyCode::P) {
                         debugging = !debugging;
                     }
 
                     if debugging {
                         loop {
-                            self.console.wait_frame();
-                            if self.console.is_key_pressed(KeyCode::Char('b')) {
+                            if self.display.is_key_pressed(VirtualKeyCode::O) {
                                 println!("stepping");
                                 &self.handle_instruction(&mut stack, &instruction.as_ref().unwrap());
                                 break;
                             }
-                            if self.console.is_key_pressed(KeyCode::Char('p')) {
+                            if self.display.is_key_pressed(VirtualKeyCode::P) {
                                 debugging = !debugging;
                                 &self.handle_instruction(&mut stack, &instruction.as_ref().unwrap());
                                 break;
                             }
-                            if self.console.is_key_pressed(KeyCode::Char('b')) {
+                            if self.display.is_key_pressed(VirtualKeyCode::B) {
                                 break;
                             }
-                            self.console.draw();
                         }
                     }
                     else {
                         &self.handle_instruction(&mut stack, &instruction.as_ref().unwrap());
                     }
 
-                    if self.console.is_key_pressed(KeyCode::Char('b')) {
+                    if self.display.is_key_pressed(VirtualKeyCode::B) {
                         return; // exits app
                     }
 
-                    self.console.draw();
+                    println!("{:?}", elapsed);
+                    elapsed += 1;
                 },
                 None => {
                     //println!("End of instructions...");
                     return
                 }
             }
+            self.display.draw();
         }
     }
 
@@ -217,7 +213,7 @@ impl Vm {
 
     fn handle_instruction(&mut self, stack: &mut MutexGuard<Stack>, i: &Instruction) {
         match i.opcode {
-            OpCode::CLS => self.console.clear_screen(),
+            OpCode::CLS => self.display.clear(),
             OpCode::JMP => {
                 stack.counter = (i.bit & ((1u16 << 12) - 1));
             },
@@ -355,25 +351,23 @@ impl Vm {
                 let orig_x = stack.registers.get_register(i.second) % 63;
                 let orig_y = stack.registers.get_register(i.third) % 31;
                 stack.registers.set_register(0xf, 0);
-                self.display.draw_sprite(&mut self.console, orig_x, orig_y, i.fourth, stack);
+                self.display.draw_sprite(orig_x, orig_y, i.fourth, stack);
             },
             OpCode::HEX9E => {
                 // skip if key pressed
                 let vx = stack.registers.get_register(i.second);
                 let key = self.keymap.match_to_key(vx);
-                println!("Key check for pressed! {:?}", key);
-                self.console.wait_frame();
-                if self.console.is_key_pressed(key) {
-                    println!("Key pressed! {:?}, incrementing stack by 2", key);
+                //println!("Checking for keypress {:?}", key);
+                if self.display.is_key_pressed(key) {
+                    //println!("Found keypress! {:?}", key);
                     stack.counter += 2;
                 }
             },
             OpCode::HEXA1 => {
                 // skip if key not pressed
                 let vx = stack.registers.get_register(i.second);
-                self.console.wait_frame();
                 let key = self.keymap.match_to_key(vx);
-                if !self.console.is_key_pressed(key) {
+                if !self.display.is_key_pressed(key) {
                     stack.counter += 2;
                 }
             },
@@ -404,9 +398,9 @@ impl Vm {
             OpCode::HFX0A => {
                 let keys = self.keymap.get_all_keys();
                 loop {
-                    self.console.wait_frame();
+                    self.display.refresh();
                     for key in keys.iter() {
-                        if self.console.is_key_pressed(*key) {
+                        if self.display.is_key_pressed(*key) {
                             let stored_key = self.keymap.match_to_u8(*key);
                             println!("Key pressed! {:?}, mapped to: {:?}", key, stored_key);
                             stack.registers.set_register(i.second, stored_key);
@@ -490,7 +484,7 @@ mod tests {
     }
 
     fn make_vm(i: Vec<u16>) -> Vm {
-        let mut vm = Vm::new(ConsoleEngine::init(64,32,60));
+        let mut vm = Vm::new();
 
         let mut cloned = Arc::clone(&vm.stack);
         let mut stack = cloned.lock().unwrap();

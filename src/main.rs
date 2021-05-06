@@ -2,7 +2,6 @@
 
 use crate::vm::Vm;
 use std::sync::Arc;
-use console_engine::ConsoleEngine;
 use std::env;
 
 mod vm;
@@ -19,9 +18,8 @@ fn main() {
         panic!("Please pass a filename to the command line.");
     }
 
-    let mut engine = ConsoleEngine::init(64, 32, 165);
-    let mut vm = Vm::new(engine);
-    //vm.start();
+    let mut vm = Vm::new();
+    vm.start();
 
     match std::fs::read(&args[1]) {
         Ok(bytes) => { vm.load(bytes); }
