@@ -47,7 +47,6 @@ fn main() {
     }
 
     println!("Executing...");
-    vm.update();
     vm.execute(&mut window);
     vm.stop();
 }

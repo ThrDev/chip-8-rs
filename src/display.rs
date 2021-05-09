@@ -19,19 +19,15 @@ impl Display {
         window.is_open() && !window.is_key_down(Key::Escape)
     }
 
-    pub fn draw_sprite(buffer: &mut Arc<RwLock<Vec<u32>>>,
+    pub fn draw_sprite(buffer: &Vec<u32>,
                        orig_x: u8,
                        orig_y: u8,
                        rows: u16,
-                       stack: &mut MutexGuard<Stack>) -> Vec<u32> {
+                       stack: &mut Stack) -> Vec<u32> {
         let mut mem = stack.i;
         let mut x = orig_x as u32;
         let mut y = orig_y as u32;
-        let mut buff: Vec<u32>;
-        {
-            let gotten_buffer = buffer.read().unwrap();
-            buff = gotten_buffer.clone();
-        }
+        let mut buff = buffer.clone();
         for n in 0..(rows as i32) {
             if y > 32 {
                 break;
