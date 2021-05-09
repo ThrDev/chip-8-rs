@@ -1,6 +1,6 @@
 use std::thread;
 use std::time::Duration;
-use std::sync::{mpsc, Arc, Mutex, MutexGuard};
+use std::sync::{mpsc, Arc, Mutex, MutexGuard, RwLock};
 use std::sync::mpsc::{TryRecvError, Sender, Receiver};
 use crate::instruction::Instruction;
 use std::thread::JoinHandle;
@@ -11,14 +11,16 @@ use rand::Rng;
 use crate::display::Display;
 use crate::keymap::KeyMap;
 use std::process::exit;
-use glerminal::VirtualKeyCode;
+use minifb::{Key, Window, WindowOptions, KeyRepeat};
+use std::alloc::Global;
 
 pub struct Vm {
     pub delay_timer: Arc<Mutex<Timer>>,
     pub sound_timer: Arc<Mutex<Timer>>,
     pub stack: Arc<Mutex<Stack>>,
+    pub keys_down: Arc<RwLock<KeysDown>>,
+    pub buffer: Arc<RwLock<Vec<u32>>>,
     pub display: Display,
-    pub keymap: KeyMap,
     pub execution_thread: Option<JoinHandle<()>>
 }
 
@@ -28,13 +30,19 @@ pub struct Timer {
     pub rx: Receiver<i32>
 }
 
+pub struct KeysDown {
+    pub keys_down: Option<Vec<Key, Global>>
+}
+
 impl Vm {
     pub fn new() -> Self {
         let (delaytx, delayrx): (Sender<i32>, Receiver<i32>) = mpsc::channel();
         let (soundtx, soundrx): (Sender<i32>, Receiver<i32>) = mpsc::channel();
+
         let mut vm = Vm{
+            keys_down: Arc::new(RwLock::new(KeysDown{keys_down:None})),
+            buffer: Arc::new(RwLock::new(vec![0; 64 * 32])),
             display: Display::new(),
-            keymap: KeyMap::new(),
             delay_timer: Arc::new(Mutex::new(Timer {
                 timing: 0,
                 tx: delaytx,
@@ -156,53 +164,67 @@ impl Vm {
         }
     }
 
-    pub fn execute(&mut self) {
+    pub fn update(&mut self) {
         let mut elapsed = 0;
         let mut debugging = false;
-        let clone = Arc::clone(&self.stack);
-        let mut stack = clone.lock().unwrap();
-        while self.display.refresh() {
-            let mut instruction = &stack.get_next_instruction();
-            match instruction {
-                Some(_) => {
-                    if self.display.is_key_pressed(VirtualKeyCode::P) {
-                        debugging = !debugging;
-                    }
+        let mut clone = Arc::clone(&self.stack);
+        let mut key_clone = Arc::clone(&self.keys_down);
+        let mut cloned_buffer = Arc::clone(&self.buffer);
+        let mut cloned_delay_timer = Arc::clone(&self.delay_timer);
 
-                    if debugging {
-                        loop {
-                            if self.display.is_key_pressed(VirtualKeyCode::O) {
-                                println!("stepping");
-                                &self.handle_instruction(&mut stack, &instruction.as_ref().unwrap());
-                                break;
-                            }
-                            if self.display.is_key_pressed(VirtualKeyCode::P) {
-                                debugging = !debugging;
-                                &self.handle_instruction(&mut stack, &instruction.as_ref().unwrap());
-                                break;
-                            }
-                            if self.display.is_key_pressed(VirtualKeyCode::B) {
-                                break;
-                            }
-                        }
-                    }
-                    else {
-                        &self.handle_instruction(&mut stack, &instruction.as_ref().unwrap());
-                    }
+        use spin_sleep::LoopHelper;
 
-                    if self.display.is_key_pressed(VirtualKeyCode::B) {
-                        return; // exits app
-                    }
+        let mut loop_helper = LoopHelper::builder()
+            .build_with_target_rate(10000.0);
 
-                    println!("{:?}", elapsed);
-                    elapsed += 1;
-                },
-                None => {
-                    //println!("End of instructions...");
-                    return
+        thread::spawn(move || loop {
+            let delta = loop_helper.loop_start_s();
+
+            {
+                let mut stack = clone.lock().unwrap();
+                let mut instruction = &stack.get_next_instruction();
+                let updated_buffer = Vm::handle_instruction(&mut cloned_buffer,
+                                                            &mut key_clone,
+                                                            &mut stack,
+                                                            &mut cloned_delay_timer,
+                                                            &instruction.as_ref().unwrap());
+                match updated_buffer {
+                    Some(b) => {
+                        println!("[Update Thread] Requesting buffer lock...");
+                        let mut write_buffer = cloned_buffer.write().unwrap();
+                        println!("[Update Thread] Got buffer lock...");
+                        write_buffer.clear();
+                        write_buffer.extend(b);
+                    },
+                    None => ()
+                };
+
+                if Self::is_key_pressed(&key_clone, Key::B) {
+                    exit(0); // exits app
                 }
+                //println!("{:?}", elapsed);
+                //elapsed += 1;
             }
-            self.display.draw();
+            loop_helper.loop_sleep();
+        });
+    }
+
+    pub fn execute(&mut self, window: &mut Window) {
+        let cloned = Arc::clone(&self.keys_down);
+        let cloned_buffer = Arc::clone(&self.buffer);
+        while Display::refresh(&window) {
+            {
+                let mut keys_down = cloned.write().unwrap();
+                keys_down.keys_down = window.get_keys_pressed(KeyRepeat::Yes);
+            }
+            {
+                //println!("[Render Thread] Requesting buffer lock...");
+                let buffer = cloned_buffer.read().unwrap();
+                //println!("[Render Thread] Got buffer lock...");
+                window
+                    .update_with_buffer(&buffer, 64, 32)
+                    .unwrap();
+            }
         }
     }
 
@@ -211,11 +233,15 @@ impl Vm {
         self.sound_timer.lock().unwrap().tx.send(1);
     }
 
-    fn handle_instruction(&mut self, stack: &mut MutexGuard<Stack>, i: &Instruction) {
+    fn handle_instruction(buffer: &mut Arc<RwLock<Vec<u32>>>,
+                          keys_down: &mut Arc<RwLock<KeysDown>>,
+                          stack: &mut MutexGuard<Stack>,
+                          delay_timer: &mut Arc<Mutex<Timer>>,
+                          i: &Instruction) -> Option<Vec<u32>> {
         match i.opcode {
-            OpCode::CLS => self.display.clear(),
+            OpCode::CLS => (),//self.display.clear(),
             OpCode::JMP => {
-                stack.counter = (i.bit & ((1u16 << 12) - 1));
+                stack.counter = i.bit & ((1u16 << 12) - 1);
             },
             OpCode::CALL => {
                 let computed_addr = i.bit & ((1u16 << 12) - 1);
@@ -263,14 +289,11 @@ impl Vm {
                 let first_register_value = stack.registers.get_register(i.second);
                 let converted: u16 = first_register_value as u16;
                 let mut totalValue = (i.bit & ((1u16 << 8) - 1)) + converted;
-                if totalValue > 0x00FF {
-                    totalValue = 0x00FF;
-                }
                 stack.registers.set_register(i.second, totalValue as u8);
             },
             OpCode::H8XY0 => {
-                let value = stack.registers.get_register(i.second);
-                stack.registers.set_register(i.third, value);
+                let value = stack.registers.get_register(i.third);
+                stack.registers.set_register(i.second, value);
             },
             OpCode::H8XY1 => {
                 let vx = stack.registers.get_register(i.second);
@@ -301,17 +324,24 @@ impl Vm {
             OpCode::H8XY5 => {
                 let vx = stack.registers.get_register(i.second);
                 let vy = stack.registers.get_register(i.third);
-                if vx > vy {
-                    stack.registers.set_register(0xf, 1);
-                } else {
-                    stack.registers.set_register(0xf, 0);
+                let converted: i16 = vx as i16;
+                let output = converted - vy as i16;
+                match output {
+                    x if output <= 0x0 => stack.registers.set_register(0xf, 0),
+                    _ => stack.registers.set_register(0xf, 1)
                 }
-                stack.registers.set_register(i.second, vx - vx);
+                stack.registers.set_register(i.second, output as u8);
             },
             OpCode::H8XY6 => {
                 let vx = stack.registers.get_register(i.second);
                 let vy = stack.registers.get_register(i.third);
-                stack.registers.set_register(i.second, vy >> 1);
+                let shifted_right = vy >> 1;
+                match shifted_right {
+                    0x1 => stack.registers.set_register(0xf, 1),
+                    0x0 => stack.registers.set_register(0xf, 0),
+                    _ => ()
+                }
+                stack.registers.set_register(i.second, shifted_right);
             },
             OpCode::H8XY7 => {
                 let vx = stack.registers.get_register(i.second);
@@ -351,60 +381,58 @@ impl Vm {
                 let orig_x = stack.registers.get_register(i.second) % 63;
                 let orig_y = stack.registers.get_register(i.third) % 31;
                 stack.registers.set_register(0xf, 0);
-                self.display.draw_sprite(orig_x, orig_y, i.fourth, stack);
+                let updated_buf = Display::draw_sprite(buffer, orig_x, orig_y, i.fourth, stack);
+                return Some(updated_buf);
             },
             OpCode::HEX9E => {
                 // skip if key pressed
                 let vx = stack.registers.get_register(i.second);
-                let key = self.keymap.match_to_key(vx);
+                let key = KeyMap::match_to_key(vx);
                 //println!("Checking for keypress {:?}", key);
-                if self.display.is_key_pressed(key) {
-                    //println!("Found keypress! {:?}", key);
+                if Vm::is_key_pressed(keys_down,key) {
+                    println!("Found keypress! {:?}", key);
                     stack.counter += 2;
                 }
             },
             OpCode::HEXA1 => {
                 // skip if key not pressed
                 let vx = stack.registers.get_register(i.second);
-                let key = self.keymap.match_to_key(vx);
-                if !self.display.is_key_pressed(key) {
+                let key = KeyMap::match_to_key(vx);
+                if !Vm::is_key_pressed(keys_down,key) {
                     stack.counter += 2;
                 }
             },
             OpCode::HFX07 => {
                 // acquire timer
-                let cloned_timer = Arc::clone(&self.delay_timer);
-                let unlocked_timer = cloned_timer.lock().unwrap();
+                let unlocked_timer = delay_timer.lock().unwrap();
                 stack.registers.set_register(i.second, unlocked_timer.timing);
             },
             OpCode::HFX15 => {
-                let cloned_timer = Arc::clone(&self.delay_timer);
-                let mut unlocked_timer = cloned_timer.lock().unwrap();
+                let mut unlocked_timer = delay_timer.lock().unwrap();
                 stack.registers.set_register(i.second, unlocked_timer.timing);
             },
             OpCode::HFX18 => {
                 let vx = stack.registers.get_register(i.second);
-                let cloned_timer = Arc::clone(&self.delay_timer);
+                let cloned_timer = Arc::clone(&delay_timer);
                 let mut unlocked_timer = cloned_timer.lock().unwrap();
                 unlocked_timer.timing = vx;
             },
             OpCode::HFX1E => {
                 let vx = stack.registers.get_register(i.second);
-                stack.i += (vx as u16);
+                stack.i += vx as u16;
                 if stack.i > 0x0FFF {
                     stack.registers.set_register(0xf, 1);
                 }
             },
             OpCode::HFX0A => {
-                let keys = self.keymap.get_all_keys();
+                let keys = KeyMap::get_all_keys();
                 loop {
-                    self.display.refresh();
                     for key in keys.iter() {
-                        if self.display.is_key_pressed(*key) {
-                            let stored_key = self.keymap.match_to_u8(*key);
+                        if Vm::is_key_pressed(keys_down,*key) {
+                            let stored_key = KeyMap::match_to_u8(*key);
                             println!("Key pressed! {:?}, mapped to: {:?}", key, stored_key);
                             stack.registers.set_register(i.second, stored_key);
-                            return;
+                            return None;
                         }
                     }
                 }
@@ -450,8 +478,20 @@ impl Vm {
                     }
                 }
             }
-            _ => ()
+            _ => {
+                return None;
+            }
         };
+
+        None
+    }
+
+    fn is_key_pressed(keys_down: &Arc<RwLock<KeysDown>>, key: Key) -> bool {
+        let keys_down = keys_down.read().unwrap();
+        match &keys_down.keys_down {
+            Some(ks) => ks.contains(&key),
+            None => false
+        }
     }
 }
 
@@ -489,7 +529,7 @@ mod tests {
         let mut cloned = Arc::clone(&vm.stack);
         let mut stack = cloned.lock().unwrap();
         for instruction in i {
-            vm.handle_instruction(&mut stack, &Instruction::new(instruction));
+            vm.handle_instruction(&mut buffer, &mut stack, &Instruction::new(instruction));
         }
 
         vm
