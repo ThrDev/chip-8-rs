@@ -28,22 +28,22 @@ impl KeyMap {
 
     pub fn match_to_u8(key: Key) -> u8 {
         match key {
-            x if Key::X == key => 0x0,
-            x if Key::Key1 == key => 0x1,
-            x if Key::Key2 == key => 0x2,
-            x if Key::Key3 == key => 0x3,
-            x if Key::Q == key => 0x4,
-            x if Key::W == key => 0x5,
-            x if Key::E == key => 0x6,
-            x if Key::A == key => 0x7,
-            x if Key::S == key => 0x8,
-            x if Key::D == key => 0x9,
-            x if Key::Z == key => 0xA,
-            x if Key::C == key => 0xB,
-            x if Key::Key4 == key => 0xC,
-            x if Key::R == key => 0xD,
-            x if Key::F == key => 0xE,
-            x if Key::V == key => 0xF,
+            _ if Key::X == key => 0x0,
+            _ if Key::Key1 == key => 0x1,
+            _ if Key::Key2 == key => 0x2,
+            _ if Key::Key3 == key => 0x3,
+            _ if Key::Q == key => 0x4,
+            _ if Key::W == key => 0x5,
+            _ if Key::E == key => 0x6,
+            _ if Key::A == key => 0x7,
+            _ if Key::S == key => 0x8,
+            _ if Key::D == key => 0x9,
+            _ if Key::Z == key => 0xA,
+            _ if Key::C == key => 0xB,
+            _ if Key::Key4 == key => 0xC,
+            _ if Key::R == key => 0xD,
+            _ if Key::F == key => 0xE,
+            _ if Key::V == key => 0xF,
             _ => 0xFF
         }
     }

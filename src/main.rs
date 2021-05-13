@@ -2,7 +2,6 @@
 // CHIP-8 EMU
 
 use crate::vm::Vm;
-use std::sync::Arc;
 use std::env;
 use minifb::{Window, WindowOptions};
 

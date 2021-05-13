@@ -1,6 +1,6 @@
 use crate::stack::Stack;
-use std::sync::{MutexGuard, Mutex, Arc, RwLock};
-use minifb::{Window, WindowOptions, Key};
+use std::sync::{MutexGuard, Arc, RwLock};
+use minifb::{Window, Key};
 
 pub struct Display {
 }
@@ -9,10 +9,6 @@ impl Display {
     pub fn new() -> Self {
         Display {
         }
-    }
-
-    pub fn clear(buffer: &mut Vec<u32>) {
-        buffer.fill(0);
     }
 
     pub fn refresh(window: &Window) -> bool {
@@ -32,7 +28,7 @@ impl Display {
             let gotten_buffer = buffer.read().unwrap();
             buff = gotten_buffer.clone();
         }
-        for n in 0..(rows as i32) {
+        for _ in 0..(rows as i32) {
             if y > 32 {
                 break;
             }
@@ -44,15 +40,15 @@ impl Display {
                 }
 
                 let pixel_data = Display::get_bit_at(sprite_data, pixel);
-                let mut index = x + (y * 64);
+                let index = x + (y * 64);
                 let cloned_buf = buff.clone();
                 let current_char = cloned_buf.get(index as usize);
                 if current_char == Some(&255u32) && pixel_data {
-                    std::mem::replace(&mut buff[index as usize], 0);
+                    let _ = std::mem::replace(&mut buff[index as usize], 0);
                     stack.registers.set_register(0xf, 1);
                 }
                 if current_char == Some(&0u32) && pixel_data {
-                    std::mem::replace(&mut buff[index as usize], 255);
+                    let _ = std::mem::replace(&mut buff[index as usize], 255);
                 }
                 x += 1;
             }
