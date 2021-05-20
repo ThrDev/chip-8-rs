@@ -17,9 +17,9 @@ impl Stack {
 
         let x = &self.memory[self.counter as usize..(self.counter + 2) as usize];
         let bit = ((x[0] as u16) << 8) | x[1] as u16;
-        if bit == 0x00000000 {
+        /*if bit == 0x00000000 {
             return None
-        }
+        }*/
         self.counter += 2;
 
         return Some(Instruction::new(bit))
