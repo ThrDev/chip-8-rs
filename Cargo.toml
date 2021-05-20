@@ -12,5 +12,5 @@ minifb = "0.19.3"
 rand = "0.8.3"
 spin_sleep = "1.0.0"
 
-[target.arm-unknown-linux-gnueabi]
-linker = "arm-linux-gnueabi-gcc"
+#[target.arm-unknown-linux-gnueabi]
+#linker = "arm-linux-gnueabi-gcc"

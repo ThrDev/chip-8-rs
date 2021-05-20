@@ -13,7 +13,6 @@ use crate::keymap::KeyMap;
 use std::process::exit;
 use minifb::{Key, Window, KeyRepeat};
 use std::alloc::Global;
-use crate::vm;
 
 pub struct Vm {
     pub delay_timer: Arc<Mutex<Timer>>,
@@ -21,7 +20,7 @@ pub struct Vm {
     pub stack: Arc<Mutex<Stack>>,
     pub keys_down: Arc<RwLock<KeysDown>>,
     pub buffer: Arc<RwLock<Vec<u32>>>,
-    pub needs_update: Arc<RwLock<bool>>,
+    pub needs_update: Arc<RwLock<Update>>,
     pub display: Display,
     pub execution_thread: Option<JoinHandle<()>>
 }
@@ -36,13 +35,17 @@ pub struct KeysDown {
     pub keys_down: Option<Vec<Key, Global>>
 }
 
+pub struct Update {
+    pub needs: bool
+}
+
 impl Vm {
     pub fn new() -> Self {
         let (delaytx, delayrx): (Sender<i32>, Receiver<i32>) = mpsc::channel();
         let (soundtx, soundrx): (Sender<i32>, Receiver<i32>) = mpsc::channel();
 
         let mut vm = Vm{
-            needs_update: Arc::new(RwLock::new(true)),
+            needs_update: Arc::new(RwLock::new(Update{needs:true})),
             keys_down: Arc::new(RwLock::new(KeysDown{keys_down:None})),
             buffer: Arc::new(RwLock::new(vec![0; 64 * 32])),
             display: Display::new(),
@@ -172,10 +175,6 @@ impl Vm {
         let mut key_clone = Arc::clone(&self.keys_down);
         let mut cloned_buffer = Arc::clone(&self.buffer);
         let mut cloned_delay_timer = Arc::clone(&self.delay_timer);
-        let mut needs_update = Arc::clone(&self.needs_update);
-
-        //let mut loop_helper = LoopHelper::builder()
-        //    .build_with_target_rate(10000.0);
 
         thread::spawn(move || loop {
             {
@@ -192,25 +191,8 @@ impl Vm {
                         let mut write_buffer = cloned_buffer.write().unwrap();
                         write_buffer.clear();
                         write_buffer.extend(b);
-
-                        {
-                            println!("[Update] Getting write lock...");
-                            let mut x = needs_update.write().unwrap();
-                            println!("[Update] Got write lock... {:?}", x);
-                            *x = true;
-                        }
                     },
                     None => {
-                        let mut needs_up: bool;
-                        {
-                            let needs_update_wrapped = needs_update.read().unwrap();
-                            //println!("[Update] Got read lock... {:?}", needs_update_wrapped);
-                            needs_up = *needs_update_wrapped;
-                        }
-                        if needs_up {
-                            let mut x = needs_update.write().unwrap();
-                            *x = false;
-                        }
                     }
                 };
 
@@ -224,30 +206,12 @@ impl Vm {
     pub fn execute(&mut self, window: &mut Window) {
         let cloned = Arc::clone(&self.keys_down);
         let cloned_buffer = Arc::clone(&self.buffer);
-        let needs_update = Arc::clone(&self.needs_update);
         while Display::refresh(&window) {
-            {
-                let mut needs_up: bool;
-                {
-                    //println!("Getting update checker lock");
-                    let update_checker = needs_update.read().unwrap();
-                    needs_up = *update_checker;
-                    //println!("Got update checker lock");
-                }
-
-                //println!("[Display] Got lock... {:?}", update_checker);
-                if needs_up {
-                    let buffer = cloned_buffer.read().unwrap();
-                    window
-                        .update_with_buffer(&buffer, 64, 32)
-                        .unwrap();
-                }
-            }
             let pressed =  window.get_keys_pressed(KeyRepeat::Yes);
             let released = window.get_keys_released();
             let updated_keys: Option<Vec<Key>>;
             {
-                let mut keys_down = cloned.read().unwrap();
+                let keys_down = cloned.read().unwrap();
                 let kd = keys_down.keys_down.clone();
                 if kd.is_some() {
                     let mut keys_down_cloned = kd.unwrap();
@@ -274,6 +238,13 @@ impl Vm {
             {
                 let mut write_lock = cloned.write().unwrap();
                 write_lock.keys_down = updated_keys;
+            }
+
+            {
+                let buffer = cloned_buffer.read().unwrap();
+                window
+                    .update_with_buffer(&buffer, 64, 32)
+                    .unwrap();
             }
         }
     }
@@ -428,8 +399,8 @@ impl Vm {
                 stack.registers.set_register(i.second, (i.bit & ((1u16 << 8) - 1)) as u8 & n2);
             },
             OpCode::HDXYN => {
-                let orig_x = stack.registers.get_register(i.second) % 63;
-                let orig_y = stack.registers.get_register(i.third) % 31;
+                let orig_x = stack.registers.get_register(i.second) % 64;
+                let orig_y = stack.registers.get_register(i.third) % 32;
                 stack.registers.set_register(0xf, 0);
                 let updated_buf = Display::draw_sprite(buffer, orig_x, orig_y, i.fourth, stack);
                 return Some(updated_buf);
