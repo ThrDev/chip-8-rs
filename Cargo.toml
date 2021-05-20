@@ -8,8 +8,9 @@ edition = "2018"
 
 [dependencies]
 # beep = "0.3.0"
-console_engine = "1.5.1"
+minifb = "0.19.3"
 rand = "0.8.3"
+spin_sleep = "1.0.0"
 
 [target.arm-unknown-linux-gnueabi]
 linker = "arm-linux-gnueabi-gcc"

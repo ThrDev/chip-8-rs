@@ -1,9 +1,9 @@
+#![feature(allocator_api)]
 // CHIP-8 EMU
 
 use crate::vm::Vm;
-use std::sync::Arc;
-use console_engine::ConsoleEngine;
 use std::env;
+use minifb::{Window, WindowOptions};
 
 mod vm;
 mod instruction;
@@ -19,9 +19,20 @@ fn main() {
         panic!("Please pass a filename to the command line.");
     }
 
-    let mut engine = ConsoleEngine::init(64, 32, 165);
-    let mut vm = Vm::new(engine);
-    //vm.start();
+    let mut window = Window::new(
+        "Test - ESC to exit",
+        640,
+        320,
+        WindowOptions::default(),
+    )
+    .unwrap_or_else(|e| {
+        panic!("{}", e);
+    });
+
+    window.limit_update_rate(Some(std::time::Duration::from_micros(16400)));
+
+    let mut vm = Vm::new();
+    vm.start();
 
     match std::fs::read(&args[1]) {
         Ok(bytes) => { vm.load(bytes); }
@@ -35,8 +46,7 @@ fn main() {
     }
 
     println!("Executing...");
-    vm.execute();
+    vm.update();
+    vm.execute(&mut window);
     vm.stop();
-
-    println!("Hello world, from RPI-Zero-W!");
 }
